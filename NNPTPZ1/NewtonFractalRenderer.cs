@@ -8,8 +8,11 @@ namespace NNPTPZ1
     internal sealed class NewtonFractalRenderer
     {
         private const int AcceptedStepCount = 30;
+        internal const int MaximumIterations = 500;
         private const double StepSquaredThreshold = 0.5;
         private const double RootDistanceSquaredThreshold = 0.01;
+        // Imaginární složka má typ float, proto připouštíme malou nenulovou odchylku.
+        private const double RootResidualTolerance = 0.00001;
         private const double AxisOffset = 0.0001;
         private const int BrightnessLossPerIteration = 2;
         private static readonly Color[] RootColors =
@@ -32,16 +35,21 @@ namespace NNPTPZ1
             double xStep = (settings.XMax - settings.XMin) / settings.Width;
             double yStep = (settings.YMax - settings.YMin) / settings.Height;
             var roots = new List<ComplexNumber>();
-            for (int row = 0; row < settings.Width; row++)
+            for (int row = 0; row < settings.Height; row++)
             {
-                for (int column = 0; column < settings.Height; column++)
+                for (int column = 0; column < settings.Width; column++)
                 {
                     var point = CreateStartingPoint(settings.XMin + column * xStep,
                         settings.YMin + row * yStep);
-                    float iterations;
-                    var root = Iterate(point, out iterations);
-                    int rootIndex = GetOrAddRootIndex(roots, root);
-                    bitmap.SetPixel(column, row, GetPixelColor(rootIndex, iterations));
+                    ComplexNumber root;
+                    int iterations;
+                    Color color = Color.Black;
+                    if (TryFindRoot(point, out root, out iterations))
+                    {
+                        int rootIndex = GetOrAddRootIndex(roots, root);
+                        color = GetPixelColor(rootIndex, iterations);
+                    }
+                    bitmap.SetPixel(column, row, color);
                 }
             }
         }
@@ -56,18 +64,39 @@ namespace NNPTPZ1
             return point;
         }
 
-        private ComplexNumber Iterate(ComplexNumber point, out float iterations)
+        internal bool TryFindRoot(ComplexNumber point, out ComplexNumber root, out int iterations)
         {
+            root = null;
             iterations = 0;
-            for (int acceptedSteps = 0; acceptedSteps < AcceptedStepCount; acceptedSteps++)
+            int acceptedSteps = 0;
+            while (acceptedSteps < AcceptedStepCount && iterations < MaximumIterations)
             {
-                var difference = Polynomial.Evaluate(point).Divide(Derivative.Evaluate(point));
+                if (!IsFinite(point))
+                    return false;
+                var derivative = Derivative.Evaluate(point);
+                if (!IsFinite(derivative) || (derivative.Real == 0 && derivative.Imaginary == 0))
+                    return false;
+                var difference = Polynomial.Evaluate(point).Divide(derivative);
+                if (!IsFinite(difference))
+                    return false;
                 point = point.Subtract(difference);
-                if (Math.Pow(difference.Real, 2) + Math.Pow(difference.Imaginary, 2) >= StepSquaredThreshold)
-                    acceptedSteps--;
+                if (Math.Pow(difference.Real, 2) + Math.Pow(difference.Imaginary, 2) < StepSquaredThreshold)
+                    acceptedSteps++;
                 iterations++;
             }
-            return point;
+            if (acceptedSteps < AcceptedStepCount || !IsFinite(point))
+                return false;
+            var residual = Polynomial.Evaluate(point);
+            if (!IsFinite(residual) || residual.GetMagnitude() > RootResidualTolerance)
+                return false;
+            root = point;
+            return true;
+        }
+
+        private static bool IsFinite(ComplexNumber value)
+        {
+            return !double.IsNaN(value.Real) && !double.IsInfinity(value.Real) &&
+                !float.IsNaN(value.Imaginary) && !float.IsInfinity(value.Imaginary);
         }
 
         internal static int GetOrAddRootIndex(List<ComplexNumber> roots, ComplexNumber root)
@@ -82,7 +111,7 @@ namespace NNPTPZ1
             if (rootIndex >= 0)
                 return rootIndex;
             roots.Add(root);
-            return roots.Count;
+            return roots.Count - 1;
         }
 
         internal static Color GetPixelColor(int rootIndex, float iterations)
