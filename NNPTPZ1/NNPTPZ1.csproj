@@ -45,6 +45,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="FractalSettings.cs" />
+    <Compile Include="NewtonFractalRenderer.cs" />
+    <Compile Include="Mathematics\ComplexNumber.cs" />
+    <Compile Include="Mathematics\Polynomial.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
